@@ -40,77 +40,133 @@
             font-size: 16px;
             line-height: 1.5;
         }
+        .success {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid #4CAF50;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .error {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid #f44336;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="spinner"></div>
+        <div class="spinner" id="spinner"></div>
         <h2>Fetching your location...</h2>
         <p id="status" class="status">Please allow access to your location</p>
+        <div id="result"></div>
     </div>
 
     <script>
-        function getLocation() {
+        function updateStatus(message, isError = false, isSuccess = false) {
             const statusEl = document.getElementById('status');
+            const spinnerEl = document.getElementById('spinner');
+            const resultEl = document.getElementById('result');
             
-            if (navigator.geolocation) {
-                statusEl.textContent = 'Getting your location...';
-                
-                navigator.geolocation.getCurrentPosition(
-                    function(position) {
-                        const locationData = {
-                            latitude: position.coords.latitude,
-                            longitude: position.coords.longitude,
-                            accuracy: position.coords.accuracy
-                        };
-                        
-                        statusEl.textContent = 'Location found! Sending to app...';
-                        
-                        // Send data to parent window
-                        window.parent.postMessage(locationData, '*');
-                    },
-                    function(error) {
-                        let errorMessage = '';
-                        switch(error.code) {
-                            case error.PERMISSION_DENIED:
-                                errorMessage = 'Location access denied by user';
-                                break;
-                            case error.POSITION_UNAVAILABLE:
-                                errorMessage = 'Location information unavailable';
-                                break;
-                            case error.TIMEOUT:
-                                errorMessage = 'Location request timed out';
-                                break;
-                            default:
-                                errorMessage = 'Unknown location error';
-                        }
-                        
-                        statusEl.textContent = 'Location access failed';
-                        
-                        // Send error to parent window
-                        window.parent.postMessage({
-                            error: errorMessage
-                        }, '*');
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        timeout: 10000,
-                        maximumAge: 0
-                    }
-                );
-            } else {
+            statusEl.textContent = message;
+            
+            if (isError) {
+                statusEl.className = 'status error';
+                spinnerEl.style.display = 'none';
+            } else if (isSuccess) {
+                statusEl.className = 'status success';
+                spinnerEl.style.display = 'none';
+            }
+        }
+
+        function getLocation() {
+            console.log('Starting geolocation request...');
+            
+            if (!navigator.geolocation) {
                 const errorMessage = 'Geolocation not supported by browser';
-                statusEl.textContent = errorMessage;
+                updateStatus(errorMessage, true);
                 
                 // Send error to parent window
                 window.parent.postMessage({
                     error: errorMessage
                 }, '*');
+                return;
             }
+
+            updateStatus('Getting your location...');
+            
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    console.log('Geolocation success:', position);
+                    
+                    const locationData = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy,
+                        timestamp: position.timestamp
+                    };
+                    
+                    updateStatus('✅ Location found! Sending to app...', false, true);
+                    
+                    // Show coordinates for debugging
+                    document.getElementById('result').innerHTML = `
+                        <div class="success">
+                            <strong>Location Found:</strong><br>
+                            Lat: ${position.coords.latitude.toFixed(6)}<br>
+                            Lon: ${position.coords.longitude.toFixed(6)}<br>
+                            Accuracy: ±${position.coords.accuracy.toFixed(0)}m
+                        </div>
+                    `;
+                    
+                    // Send data to parent window
+                    console.log('Sending location data:', locationData);
+                    window.parent.postMessage(locationData, '*');
+                },
+                function(error) {
+                    console.error('Geolocation error:', error);
+                    
+                    let errorMessage = '';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMessage = 'Location access denied by user';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMessage = 'Location information unavailable';
+                            break;
+                        case error.TIMEOUT:
+                            errorMessage = 'Location request timed out';
+                            break;
+                        default:
+                            errorMessage = 'Unknown location error: ' + error.message;
+                    }
+                    
+                    updateStatus('❌ ' + errorMessage, true);
+                    
+                    // Send error to parent window
+                    console.log('Sending error:', errorMessage);
+                    window.parent.postMessage({
+                        error: errorMessage,
+                        code: error.code
+                    }, '*');
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 0
+                }
+            );
         }
 
         // Start geolocation when page loads
+        console.log('Page loaded, starting geolocation...');
         window.addEventListener('load', getLocation);
+        
+        // Also try immediately in case load event already fired
+        if (document.readyState === 'complete') {
+            getLocation();
+        }
     </script>
 </body>
 </html>
